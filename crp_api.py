@@ -63,7 +63,6 @@ class Socket:
     if packet.is_valid() and packet.packet_type() == 'SYNACK':
       self.send_ACK(server_addr, packet)
 
-
   def send_packet(dst_ip, dst_port, syn=False, ack=False, fin=False, seq_num, ack_num, window=None, data=None):
     header = Header(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=self.seq_num, ack_num=self.ack_num)
     packet = header.packet()
