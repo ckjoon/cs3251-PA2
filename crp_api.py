@@ -5,6 +5,7 @@ from socket import *
 import hashlib
 import ctypes
 import uuid
+import math
 
 
 
@@ -62,6 +63,11 @@ class Socket:
     packet = Packet(msg)
     if packet.is_valid() and packet.packet_type() == 'SYNACK':
       self.send_ACK(server_addr, packet)
+      
+    else:
+      raise Exception('Something went wrong during 3-way handshake')
+  
+  def close(self):
 
   def send_packet(dst_ip, dst_port, syn=False, ack=False, fin=False, seq_num, ack_num, window=None, data=None):
     header = Header(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=self.seq_num, ack_num=self.ack_num)
@@ -107,11 +113,7 @@ class Socket:
 
 class Connection:
   '''
-  Gets returned as a result of a successful handshake to both client and server.
-
-  Note: there will be a different connection object return corresponding to a connection to both client and server.
-
-  Will probably remove and consolidate the functions inside Socket class, this one seems a bit unnecessary
+  Gets returned as a result of a successful handshake to both server and client.
   '''
   def __init__(self, seq_num, ack_num, custom_socket, dst_ip, dst_port):
     self.seq_num = seq_num
@@ -132,8 +134,25 @@ class Connection:
   def send_data(self, data, recvd_packet):
     '''
     Used by client to send data.
+    data (bytearray): data to be sent converted to bytearray.
+    recvd_packet (Packet): last received packet.
     '''
-    data_chunks = [data]
+    frame_buffer_size = recvd_packet.window / 4
+    data_chunks = []
+
+    start = len(data) % 4
+    padding = 4 - start
+
+    data_chunks.append([0b0]*padding)
+    data_chunks.append(data[:start])
+    last_ack_received = recvd_packet.ack_num
+
+    for i in range(start, len(data), 4):
+      data_chunks.append(data[i:i+4])
+    
+
+
+    
     #TODO:implement splitting data into chunks depending on the window size later
     for chunk in data_chunks:
       packet = Packet(recvd_packet)
