@@ -138,19 +138,20 @@ class Connection:
     data (bytearray): data to be sent converted to bytearray.
     recvd_packet (Packet): last received packet.
     '''
-    window_size = recvd_packet.window
+    frame_buffer_size = recvd_packet.window / 4
+    data_chunks = []
+
+    start = len(data) % 4
+    padding = 4 - start
+
+    data_chunks.append([0b0]*padding)
+    data_chunks.append(data[:start])
+    last_ack_received = recvd_packet.ack_num
+
+    for i in range(start, len(data), 4):
+      data_chunks.append(data[i:i+4])
     
-     data_chunks = []
 
-     start = len(data) % 4
-     padding = 4 - start
-
-     data_chunks.append([0b0]*padding)
-     data_chunks.append(data[:start])
-
-     for i in range(start, len(data), 4):
-       data_chunks.append(data[i:i+4])
-    
 
     
     #TODO:implement splitting data into chunks depending on the window size later
