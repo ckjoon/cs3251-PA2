@@ -134,3 +134,6 @@ fabric.properties
 
 #idea in general
 .idea/
+
+#vscode in general
+.vscode/
