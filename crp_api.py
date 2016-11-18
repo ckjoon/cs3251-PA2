@@ -7,15 +7,6 @@ import ctypes
 import uuid
 import math
 
-
-
-class Connection:
-  def __init__(self, src_ip, src_port, dst_ip, dst_port):
-    self.src_ip = src_ip
-    self.src_port = src_port
-    self.dst_ip = dst_ip
-    self.dst_port = dst_port
-
 class Socket:
   def __init__(self, ip_addr, port):
     self.socket = socket(AF_INET, SOCK_DGRAM)
@@ -115,21 +106,62 @@ class Connection:
   '''
   Gets returned as a result of a successful handshake to both server and client.
   '''
-  def __init__(self, seq_num, ack_num, custom_socket, dst_ip, dst_port):
-    self.seq_num = seq_num
-    self.ack_num = ack_num
+  def __init__(self, seq_num, ack_num, custom_socket, dst_ip, dst_port, window_size=65485):
+    self.seq_num = seq_num#currently_used_by_server
+    self.ack_num = ack_num#currently_used_by_server
+    self.window_size = window_size
     self.custom_socket = socket
     self.dst_ip = dst_ip
     self.dst_port = dst_port
 
-  def recv(self, size):
+  def recv(self):
     '''
-    Called by client
+    Called by server
     '''
-    msg, addr = self.socket.recvfrom(size)
-    packet = Packet(msg)
-    return packet
+    attempt_num = 0
+    buffer = []
+    while attempt_num < 3:
+      seq_num, buffer_data  = self.buffer_helper()
+      if seq_num < self.ack_num:
+        attempt_num += 1
+      else:
+        self.ack_num = seq_num + 1
+        self.seq_num = self.ack_num + self.window_size
+        attempt_num = 0
+        self.send_ack()
+        buffer = buffer.extend(buffer_data)
 
+    if len(buffer) == 0:
+      raise Exception("Error, no data was received")
+
+    buffer = list(set(buffer))
+    buffer.sort(key=lambda x,y: x[0] < y[0])
+    data = bytes(bytearray([x[1] for x in buffer]))
+    return data
+    #TODO: across the whole class, clear up on SEQ_NUM/ACK_NUM confusion in client vs. server scenarios
+
+  def buffer_helper(self)
+    '''
+    Called by server
+    '''
+    received_buffer = []
+    try:
+      while True:
+        msg, addr = self.custom_socket.socket.recvfrom(self.window_size)
+        packet = Packet(msg)
+        received_buffer.append( (packet.seq_num, packet.data) )
+    except:
+      received_buffer.sort(key=lambda x,y: x[0] < y[0])#doublecheck the equality sign direction
+      min_ack = self.ack_num - 1
+      if len(received_buffer) == 1:
+        min_ack = received_buffer[0][0]
+      elif len(received_buffer) > 1:
+        min_ack_i = 0
+        for i in range(1, len(received_buffer)):
+          if received_buffer[i-1][0] - received_buffer[i][0] > 1:
+            min_ack = received_buffer[i-1][0]
+            min_ack_i = i-1
+      return min_ack, received_buffer[:i]
 
   def send_data(self, data, recvd_packet):
     '''
@@ -171,7 +203,8 @@ class Connection:
         for i in range(relative_start, last_frame_sent)
           self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=last_ack_received+i, ack_num=last_seq_received, data=chunk)
 
-        last_packet_received = self.recv(2048)
+        msg, addr = self.custom_socket.socket.recvfrom(size)
+        last_packet_received = Packet(msg)
         last_ack_received = last_packet_received.ack_num
       except:
         if attempt < 3:
@@ -181,12 +214,10 @@ class Connection:
           raise Exception("All attempts at sending failed, retry again")
 
 
-  def send_ack(self, recvd_packet):
+  def send_ack(self):
     '''
     Server sends ACK to client to acknowledge receptance of data.
     '''
-    self.ack_num = recvd_packet.seq_num + 1
-    self.seq_num = recvd_packet.ack_num
 
     self.custom_socket.send_packet(self.dst_ip, self.dst_port, ack=True, seq_num=self.seq_num, ack_num=self.ack_num)
 
