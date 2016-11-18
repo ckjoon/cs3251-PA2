@@ -63,10 +63,10 @@ class Socket:
     packet = Packet(msg)
     if packet.is_valid() and packet.packet_type() == 'SYNACK':
       self.send_ACK(server_addr, packet)
-      
+
     else:
       raise Exception('Something went wrong during 3-way handshake')
-  
+
   def close(self):
 
   def send_packet(dst_ip, dst_port, syn=False, ack=False, fin=False, seq_num, ack_num, window=None, data=None):
@@ -122,44 +122,64 @@ class Connection:
     self.dst_ip = dst_ip
     self.dst_port = dst_port
 
-  def recv(self, packet):
+  def recv(self, size):
     '''
     Called by client
     '''
-    msg, addr = socket.recvfrom(2048)
+    msg, addr = self.socket.recvfrom(size)
     packet = Packet(msg)
-    if packet.packet_type() == 'ACK':
-      #TODO: handle ACK from SERVER->CLIENT
+    return packet
+
 
   def send_data(self, data, recvd_packet):
     '''
     Used by client to send data.
-    data (bytearray): data to be sent converted to bytearray.
+    data (bytes): data to be sent.
     recvd_packet (Packet): last received packet.
     '''
-    frame_buffer_size = recvd_packet.window / 4
+    window_size = recvd_packet.window / 4 #SWS; in terms of packets
+    #list of chunks of data in bytes that can fit in one packet
     data_chunks = []
-
+    data = bytearray(data)
     start = len(data) % 4
     padding = 4 - start
 
-    data_chunks.append([0b0]*padding)
-    data_chunks.append(data[:start])
-    last_ack_received = recvd_packet.ack_num
+    first_chunk = bytearray()
+    for i in range(padding):
+      first_chunk.append(0x0)
+    for i in range(start)
+      first_chunk.append(data[i])
+
+    data_chunks.append(bytes(first_chunk))
+
+    initial_seq_num = recvd_packet.ack_num #LAR
+
 
     for i in range(start, len(data), 4):
-      data_chunks.append(data[i:i+4])
-    
+      data_chunks.append(bytes(data[i:i+4]))
+    num_chunks = len(data_chunks)
 
+    last_ack_received = initial_seq_num
+    last_seq_received = recvd_packet.seq_num
 
-    
-    #TODO:implement splitting data into chunks depending on the window size later
-    for chunk in data_chunks:
-      packet = Packet(recvd_packet)
-      self.seq_num = packet.ack_num
-      self.ack_num = packet.seq_num + 1
-      self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=new_seq_num, ack_num=new_ack_num)
-    #TODO:handle waiting for ACKs and resending missing pieces or continue
+    while last_ack_received < (initial_seq_num + num_chunks)
+
+      relative_start = last_ack_received - initial_seq_num
+      relative_last_frame_sent = min(relative_start+window_size-1,num_chunks-1)
+      attempt = 0
+      try:
+        for i in range(relative_start, last_frame_sent)
+          self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=last_ack_received+i, ack_num=last_seq_received, data=chunk)
+
+        last_packet_received = self.recv(2048)
+        last_ack_received = last_packet_received.ack_num
+      except:
+        if attempt < 3:
+          print('Attempt {0} failed, resending the exact same window'.format(attempt))
+          attempt += 1
+        else:
+          raise Exception("All attempts at sending failed, retry again")
+
 
   def send_ack(self, recvd_packet):
     '''
@@ -225,7 +245,8 @@ class Header:
     'ack_num': int32,
     'parameter': int32,
     'window': int16,
-    'checksum': int16
+    'checksum': int16,
+    'data': int32
     }
 
   def __init__(self, src_port, dst_port, syn=False, ack=False, fin=False, seq_num=None, ack_num=None, window=None, data=None):
@@ -242,6 +263,7 @@ class Header:
     if not window:
       self.window = max_window_size
     self.params = [fin, syn, ack]
+    self.data = data
 
   def packet(self):
     b = bytearray()
@@ -252,8 +274,17 @@ class Header:
     parameter = self.form_param()
     b.extend( bytearray( field_types['parameter'](parameter) ) )
     b.extend( bytearray( field_types['window'](self.window) ) )
-    md5 = self.form_checksum(b)
+    if self.data:
+      checksum_b = copy(b)
+      checksum_b.extend( bytearray( field_types['window'](self.data) ) )
+      md5 = self.form_checksum(checksum_b)
+    else:
+      md5 = self.form_checksum(b)
+
     b.extend( bytearray( field_types['checksum'](md5) ) )
+      if self.data:
+        b.extend( bytearray( field_types['window'](self.data) ) )
+
     return bytes(b)
 
   def form_checksum(self, b):
