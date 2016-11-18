@@ -23,22 +23,34 @@ def main():
       return
     while True:
       command = input('What would you like the client to do? type in help to see possible commands')
-      try: 
-        if command == 'disconnect':
+      command_values = command.split()
+      
+      if (len(command_val) > 2):
+        pass
+    
+      possible_commands = ['disconnect', 'window', 'get', 'post', 'help']
+      
+      if(command_values[0] in possible_commands):
+        try: 
+          if command == 'disconnect':
+            client_socket.close()
+            return
+          if command == 'window':
+            print ('window')
+          if command == 'get':
+            print('get')
+          if command == 'post':
+            print('post')
+        except:
+          print ('Something went wrong, closing client...')
           client_socket.close()
           return
-        if command == 'window':
-          print ('window')
-        if command == 'get':
-          print('get')
-        if command == 'post':
-          print('post')
-        if command == 'help':
-          print('help')   
-      except:
-        print ('Something went wrong, closing client...')
-        client_socket.close()
-        return
+      
+      else:
+        print('please put in your command again')
+      
+
+
 if __name__ == '__main__':
   args = get_args()
   global server, port
