@@ -19,33 +19,34 @@ def get_args():
 
 
 def main():
-  try:
-    """
-    ip_addr = '172.17.0.2'
-    server_port = port
-    server_socket.bind((ip_addr, port))
-    server_socket.listen(15)
-    print('The server is running on {0} port {1}'.format(ip_addr, port))
-    """
-    #print("starting server")
-    while True:
-      #conn_socket, addr = server_socket.accept()
-      #print('inside while loop')
-      if command:
-        print(command)
-        #print(command)
-        #print('inside command')
-        
+  #try:
+  ip_addr = '172.17.0.2'
+  server_port = port
+  server_socket = socket(AF_INET, SOCK_STREAM)
+  server_socket.bind((ip_addr, port))
+  server_socket.listen(15)
+  print('The server is running on {0} port {1}'.format(ip_addr, port))
+  while True:
+    conn_socket, addr = server_socket.accept()
+    l = conn_socket.recv(1024).decode('utf-8')
+    while (l):
+      print(l)
+      l = conn_socket.recv(1024).decode('utf-8')
+    #if command:
+      # print(command)
+      #print(command)
+      #print('inside command')
+  """      
   except:
     print('Something went very wrong...')
-    #server_socket.close()
-    
+    server_socket.close()
+  """  
 
 if __name__ == '__main__':
   args = get_args()
   global port
   port = args.port
-  t = threading.Thread(target = input_thread)
-  t.start()
+  #t = threading.Thread(target = input_thread)
+  #t.start()
   main()
 
