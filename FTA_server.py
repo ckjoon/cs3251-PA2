@@ -30,7 +30,15 @@ def main():
     conn_socket, addr = server_socket.accept()
     l = conn_socket.recv(1024).decode('utf-8')
     while (l):
-      print(l)
+      if("FileName" in l):
+        print('filename')
+        filename = l.split(':')
+        f = open('output/'+filename[1],'wb')
+      elif 'ENDPOST' in l:
+        f.close()
+      else:
+        f.write(l.encode('utf-8'))
+        print(l)
       l = conn_socket.recv(1024).decode('utf-8')
     #if command:
       # print(command)

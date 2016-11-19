@@ -11,6 +11,7 @@ def get_args():
   return parser.parse_args()
 
 
+
 def main():
   connect = input('Type in \'connect\' to connect: ')
   if connect == 'connect':
@@ -24,10 +25,7 @@ def main():
     while True:
       command = input('What would you like the client to do? ')
       command_values = command.split()
-      
-    
       possible_commands = ['disconnect', 'window', 'get', 'post', 'help']
-      
       if(command_values[0] in possible_commands):
         if command_values[0] == 'disconnect':
           client_socket.close()
@@ -38,17 +36,19 @@ def main():
           print('get')
         if command_values[0] == 'post':
           print('at post')
-          client_socket.send(('FileName:'+command_values[1]).encode('utf-8'))
-          f = open(command_values[1],'rb')
-          l = f.read(1024)
-          while (l):
+          try:
+            f = open(command_values[1],'rb')
+            client_socket.send(('FileName:'+command_values[1]).encode('utf-8'))
+            l = f.read(1024)
+            while (l):
               client_socket.send(l)
               l = f.readline()
-          f.close()
-          client_socket.send('EndPost'.encode('utf-8'))
-          print('post')
-          
-      
+            f.close()
+            client_socket.send('ENDPOST'.encode('utf-8'))
+            print('post')
+          except FileNotFoundError:
+            print('File does not exist')
+            client_socket.close()
       else:
         print('please put in your command again')
       
