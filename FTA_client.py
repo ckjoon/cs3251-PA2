@@ -8,6 +8,8 @@ def get_args():
   parser = argparse.ArgumentParser(description='Run TCP sensor.')
   parser.add_argument('-s', '--server', type=str, required=True, help='ip address of the server')
   parser.add_argument('-p', '--port', type=int, required=True, help='port of the server')
+  parser.add_argument('-d', '--debug', action='store_true', help='debugging output')
+
   return parser.parse_args()
 
 
@@ -18,43 +20,67 @@ def main():
     try:
       client_socket = socket(AF_INET, SOCK_STREAM)
       client_socket.connect((server, port))
-      print('connected')
+      if debug:
+        print('The client is connected to server {0} on port {1}'.format(server,port))
     except:
       print ('Client was not able to connect to server, make sure your server address is correct!')
       return
     while True:
       command = input('What would you like the client to do? ')
+      if debug:
+        print('[DEBUG]user input: '+command)
       command_values = command.split()
       possible_commands = ['disconnect', 'window', 'get', 'post', 'help']
       if(command_values[0] in possible_commands):
+        if debug:
+            print('[DEBUG]user input is valid')
         if command_values[0] == 'disconnect':
           client_socket.close()
           return
         if command_values[0] == 'window':
           print ('window')
         if command_values[0] == 'get':
-          print('get')
-          client_socket.send(('FILERECEIVE:'+command_values[1]).encode('utf-8'))
+          if debug:
+            print('[DEBUG]get file ' + command_values[1])
+          request = 'FILERECEIVE:'+command_values[1]
+          client_socket.send(request.encode())
+          if debug:
+            print('sent content: '+request)
           f = open('get/'+command_values[1],'wb')
-          print ('file: {0} opened'.format(command_values[1]))
-          l = client_socket.recv(1024).decode('utf-8')
-          while 'ENDPOST' in l or l :
-            print(l)
-            f.write(l.encode('utf-8'))
-            l = client_socket.recv(1024).decode('utf-8')
-          f.close()
+          if debug:
+            print('[DEBUG]opened file at location ' +'get/'+command_values[1] )
+          content = client_socket.recv(1024).decode()
+          while content :
+            if debug:
+              print('[DEBUG]received content: '+content)
+            f.write(content.encode())
+            content = client_socket.recv(1024).decode()
+            if 'ENDPOST' in content:
+              f.close()
+              content = None
+          if debug:
+            print('[DEBUG]File closed')
         if command_values[0] == 'post':
-          print('at post')
+          if debug:
+            print('[DEBUG]post/upload file ' + command_values[1])
           try:
             f = open(command_values[1],'rb')
-            client_socket.send(('FILESEND:'+command_values[1]).encode('utf-8'))
-            l = f.read(1024)
-            while (l):
-              client_socket.send(l)
-              l = f.readline()
+            if debug:
+              print('[DEBUG]File,{0} opened'.format(command_values[1]))
+            request = 'FILESEND:'+command_values[1]
+            client_socket.send(request.encode())
+            if debug:
+              print('[DEBUG]sent content: '+ request)
+            content = f.read(1024)
+            while (content):
+              client_socket.send(content)
+              content = f.read(1024)
+              if debug:
+                print('sent content: ' + content.decode())
             f.close()
-            client_socket.send('ENDPOST'.encode('utf-8'))
-            print('post')
+            client_socket.send('ENDPOST'.encode())
+            if debug:
+              print('Completed posting file')
           except FileNotFoundError:
             print('File does not exist')
             client_socket.close()
@@ -65,9 +91,10 @@ def main():
 
 if __name__ == '__main__':
   args = get_args()
-  global server, port
+  global server, port, debug
   server = args.server
   port = args.port
+  debug = args.debug
   main()
 
 #./sensor-udp -s 172.17.0.3 -p 8591 –u 'Room100SE' -c 'eye<3sockets!' -r 68.2
