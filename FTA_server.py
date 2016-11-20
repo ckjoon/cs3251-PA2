@@ -29,17 +29,33 @@ def main():
   while True:
     conn_socket, addr = server_socket.accept()
     l = conn_socket.recv(1024).decode('utf-8')
+    send = False
     while (l):
-      if("FileName" in l):
-        print('filename')
-        filename = l.split(':')
-        f = open('output/'+filename[1],'wb')
-      elif 'ENDPOST' in l:
-        f.close()
-      else:
+      if send == False:
+        if "FILESEND" in l:
+          print('File will be sent from client')
+          filename = l.split(':')
+          f = open('post/'+filename[1],'wb')
+        if "FILERECEIVE" in l:
+          print('File will be sent to the client')
+          filename = l.split(':')
+          f = open(filename[1],'rb')
+          send = True
+        if 'ENDPOST' in l:
+          f.close()
+      if send == False:
+        print('inside receiving')
         f.write(l.encode('utf-8'))
+        l = conn_socket.recv(1024).decode('utf-8')
         print(l)
-      l = conn_socket.recv(1024).decode('utf-8')
+      if send:
+        print('inside sending')
+        l = f.readline()
+        conn_socket.send(l)
+    if (send):
+      conn_socket.send('ENDPOST'.encode('utf-8'))
+
+
     #if command:
       # print(command)
       #print(command)

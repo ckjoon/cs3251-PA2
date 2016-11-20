@@ -34,11 +34,20 @@ def main():
           print ('window')
         if command_values[0] == 'get':
           print('get')
+          client_socket.send(('FILERECEIVE:'+command_values[1]).encode('utf-8'))
+          f = open('get/'+command_values[1],'wb')
+          print ('file: {0} opened'.format(command_values[1]))
+          l = client_socket.recv(1024).decode('utf-8')
+          while 'ENDPOST' in l or l :
+            print(l)
+            f.write(l.encode('utf-8'))
+            l = client_socket.recv(1024).decode('utf-8')
+          f.close()
         if command_values[0] == 'post':
           print('at post')
           try:
             f = open(command_values[1],'rb')
-            client_socket.send(('FileName:'+command_values[1]).encode('utf-8'))
+            client_socket.send(('FILESEND:'+command_values[1]).encode('utf-8'))
             l = f.read(1024)
             while (l):
               client_socket.send(l)
