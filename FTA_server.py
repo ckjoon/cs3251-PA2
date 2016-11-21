@@ -35,27 +35,28 @@ def main():
     while (content):
       if send == False:
         if "FILESEND" in content:
-          if debug:
-            print('[DEBUG]File will be sent from client')
+          print('File will be sent from client')
           filename = content.split(':')
           f = open('post/'+filename[1],'wb')
           content = conn_socket.recv(1024).decode()
         elif "FILERECEIVE" in content:
-          if debug:
-            print('File will be sent to the client')
+          print('File will be sent to the client')
           filename = content.split(':')
           f = open(filename[1],'rb')
           send = True  
-        else:        
+        else:   
+          #Receive file from client     
           print('inside receiving')
           f.write(content.encode())
           content = conn_socket.recv(1024).decode()
           print(content)
           if 'ENDPOST' in content:
             f.close()
+            if debug:
+              print('[DEBUG]Completed receiving {0}'.format(filename[1]))
             content = None
-
       if send:
+        #send file to client     
         if debug:
           print('[DEBUG]inside sending')
         content = f.read(1024)
@@ -64,6 +65,8 @@ def main():
         conn_socket.send(content)
         if 'ENDPOST' in content.decode():
           f.close()
+          if debug:
+            print('[DEBUG]Completed sending {0}'.format(filename[1]))
           content = None
     if (send):
       conn_socket.send('ENDPOST'.encode())

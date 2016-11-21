@@ -12,8 +12,6 @@ def get_args():
 
   return parser.parse_args()
 
-
-
 def main():
   connect = input('Type in \'connect\' to connect: ')
   if connect == 'connect':
@@ -57,6 +55,8 @@ def main():
             content = client_socket.recv(1024).decode()
             if 'ENDPOST' in content:
               f.close()
+              if debug:
+                print ('[DEBUG]Completed receiving {0} '.format(command_values[1]) )
               content = None
           if debug:
             print('[DEBUG]File closed')
@@ -76,11 +76,11 @@ def main():
               client_socket.send(content)
               content = f.read(1024)
               if debug:
-                print('sent content: ' + content.decode())
+                print('[DEBUG]sent content: ' + content.decode())
             f.close()
             client_socket.send('ENDPOST'.encode())
             if debug:
-              print('Completed posting file')
+              print('[DEBUG] Completed posting {0}'.format(command_values[1]))
           except FileNotFoundError:
             print('File does not exist')
             client_socket.close()
