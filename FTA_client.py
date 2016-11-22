@@ -4,6 +4,9 @@
 import argparse
 import os
 from socket import *
+import traceback
+
+
 
 def get_args():
   parser = argparse.ArgumentParser(description='Run TCP sensor.')
@@ -13,8 +16,21 @@ def get_args():
 
   return parser.parse_args()
 
+def commands_available():
+  print('Available commands:')
+  print('usage: disconnect')
+  print('disconnects client gracefully ')
+  print('usage: window [number]')
+  print('Set window for client')
+  print('usage: get [filename]')
+  print('gets [filename] from the server  ')
+  print('usage: post [filename]')
+  print('post [filename] from the server  ')
+
+
 def main():
   try:
+    global window
     connect = input('Type in \'connect\' to connect: ')
     while (connect != 'connect'):
       print('Incorrect input format')
@@ -29,7 +45,7 @@ def main():
         print ('Client was not able to connect to server, make sure your server address is correct!')
         return
       while True:
-        command = input('What would you like the client to do? ')
+        command = input('What would you like the client to do? Type help to see list of commands ')
         if debug:
           print('[DEBUG]user input: '+command)
         command_values = command.split()
@@ -41,6 +57,8 @@ def main():
             client_socket.close()
             return
           if command_values[0] == 'window':
+            window = int(command_values[0])
+            print('Window size set to '+window)
             print ('window')
           if command_values[0] == 'get':
             if debug:
@@ -50,32 +68,34 @@ def main():
             if debug:
               print('sent content: '+request)
             try:
-              filename = 'get/'+command_values[1]
               count = 0
-              
-              while (os.path.exists(filename) == False):
+              filename = 'get/'+command_values[1]
+              while (os.path.exists(filename)):
+                print('[Debug] duplicate detected')
                 count = count + 1
-                filename = filename + count
+                extension = command_values[1].split('.')
+                filename= ('{0} ({1}).{2}').format('get/'+extension[0], str(count), extension[1])
+                print('[Debug] New File name  ' +filename)
 
-              f = open('get/'+command_values[1],'wb')
+              f = open(filename,'wb')
 
               if debug:
                 print('[DEBUG]opened file at location ' +'get/'+command_values[1] )
               
-              content = client_socket.recv(1024).decode()
+              content = client_socket.recv(window).decode()
               
               while content :
                 if debug:
                   print('[DEBUG]received content: '+content)
               
                 f.write(content.encode())
-                content = client_socket.recv(1024).decode()
+                content = client_socket.recv(window).decode()
           
                 if 'ENDPOST' in content:
                   f.close()
                   if debug:
                     print('[DEBUG]File closed')
-                    print ('[DEBUG]Completed receiving {0} '.format(command_values[1]) )
+                  print ('Completed receiving {0} '.format(command_values[1]) )
                   content = None
             except IOError:
               print('could not open file')   
@@ -91,23 +111,26 @@ def main():
               client_socket.send(request.encode())
               if debug:
                 print('[DEBUG]sent content: '+ request)
-              content = f.read(1024)
+              content = f.read(window)
               while (content):
                 client_socket.send(content)
-                content = f.read(1024)
+                content = f.read(window)
                 if debug:
-                  print('[DEBUG]sent content: ' + content.decode())
+                  print('[DEBUG]sent content: ' + str(content.decode()))
               f.close()
               client_socket.send('ENDPOST'.encode())
-              if debug:
-                print('[DEBUG] Completed posting {0}'.format(command_values[1]))
+              print('Completed posting {0}'.format(command_values[1]))
             except FileNotFoundError:
               print('File does not exist')
               client_socket.close()
+          if command_values[0] == 'help':
+            commands_available()
         else:
-          print('please put in your command again')
+          print('Incorrect command format Please put in your command again')
+
   except:
-    print('Something went wrong / user terminated the client')
+    print(traceback.print_exc())
+    print('Something went wrong / user tserminated the client')
     try:  
       client_socket.close()
       if debug:
@@ -125,10 +148,11 @@ def main():
 
 if __name__ == '__main__':
   args = get_args()
-  global server, port, debug
+  global server, port, debug, window 
   server = args.server
   port = args.port
   debug = args.debug
+  window = 1024
   main()
 
 #./sensor-udp -s 172.17.0.3 -p 8591 –u 'Room100SE' -c 'eye<3sockets!' -r 68.2
