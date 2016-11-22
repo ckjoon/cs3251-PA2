@@ -4,15 +4,16 @@ import argparse
 from socket import *
 import hashlib
 import ctypes
-import uuid
+import random
 import math
 
-class Socket:
-  def __init__(self, ip_addr, port):
-    self.socket = socket(AF_INET, SOCK_DGRAM)
-    self.src_ip = ip_addr
-    self.src_port = port
-    self.socket.bind( (ip_addr, port) )
+class CRPSocket:
+  def __init__(self, ip_addr='', port=None, server=False):
+    self.udp_socket = socket(AF_INET, SOCK_DGRAM)
+    #self.src_ip = ip_addr
+    #self.src_port = port
+    if server:
+      self.udp_socket.bind( (ip_addr, port) )
     self.open_connections = {}#key: client_ip_addr, val: connection object
 
   def recv(self):
@@ -21,7 +22,7 @@ class Socket:
     '''
     #print('The server is running on {0} port {1}'.format(ip_addr, port))
     #while True:
-    msg, client_addr = self.socket.recvfrom(2048)
+    msg, client_addr = self.udp_socket.recvfrom(2048)
     packet = Packet(msg)
     if packet.is_valid():
       if packet.packet_type() == 'SYN':
@@ -39,18 +40,19 @@ class Socket:
     '''
     Steps 1 and 3 of the 3-way handshake are called from here by the client.
     '''
-    seq_num = uuid.uuid4()
+    seq_num = random.SystemRandom().randint(0, 2^31)
     #ack_num is irrelevant here because server will generate his own one
     ack_num = 0
 
     #forming and sending a SYN packet to the server
+    print(seq_num)
     self.send_packet(dst_ip, dst_port, syn=True, seq_num=seq_num, ack_num=ack_num)
     #syn_header = Header(self.src_port, dst_port, syn=True, ack=False, fin=False, seq_num=self.seq_num, ack_num=self.ack_num)
     #syn_packet = syn_header.packet()
     #self.socket.sendto(syn_packet, (dst_ip, dst_port))
 
     #ready to receive SYNACK packet from the server
-    msg, server_addr = self.socket.recvfrom(2048)
+    msg, server_addr = self.udp_socket.recvfrom(2048)
     packet = Packet(msg)
     if packet.is_valid() and packet.packet_type() == 'SYNACK':
       self.send_ACK(server_addr, packet)
@@ -58,10 +60,10 @@ class Socket:
     else:
       raise Exception('Something went wrong during 3-way handshake')
 
-  def send_packet(dst_ip, dst_port, syn=False, ack=False, fin=False, seq_num, ack_num, window=None, data=None):
+  def send_packet(dst_ip, dst_port, seq_num, ack_num, syn=False, ack=False, fin=False, window=None, data=None):
     header = Header(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=self.seq_num, ack_num=self.ack_num)
     packet = header.packet()
-    self.socket.sendto(packet, (dst_ip, dst_port))
+    self.udp_socket.sendto(packet, (dst_ip, dst_port))
 
 
   def send_ACK(self, server_addr, packet):
@@ -89,7 +91,7 @@ class Socket:
     #Making ack_num sent by server to be incremented seq_num from the client
     new_ack_num = packet.seq_num + 1
     #Generating new server seq_num
-    new_seq_num = uuid.uuid4()
+    new_seq_num = random.SystemRandom().randint(0, 2^31)
 
     #forming the header
     #synack_header = Header(packet.dst_port, packet.src_port, syn=True, ack=True, fin=False, seq_num=new_seq_num, ack_num=new_ack_num)
@@ -141,14 +143,14 @@ class Connection:
     data = bytes(bytearray([x[1] for x in buffer]))
     return data
 
-  def buffer_helper(self)
+  def buffer_helper(self):
     '''
     Called by server
     '''
     received_buffer = []
     try:
       while True:
-        msg, addr = self.custom_socket.socket.recvfrom(self.window_size)
+        msg, addr = self.custom_socket.udp_socket.recvfrom(self.window_size)
         packet = Packet(msg)
         received_buffer.append( (packet.seq_num, packet.data) )
     except:
@@ -181,7 +183,7 @@ class Connection:
     first_chunk = bytearray()
     for i in range(padding):
       first_chunk.append(0x0)
-    for i in range(start)
+    for i in range(start):
       first_chunk.append(data[i])
 
     data_chunks.append(bytes(first_chunk))
@@ -196,16 +198,16 @@ class Connection:
     last_ack_received = initial_seq_num
     last_seq_received = recvd_packet.seq_num
 
-    while last_ack_received < (initial_seq_num + num_chunks)
+    while last_ack_received < (initial_seq_num + num_chunks):
 
       relative_start = last_ack_received - initial_seq_num
       relative_last_frame_to_send = min(relative_start+window_size-1,num_chunks-1)
       attempt = 0
       try:
-        for i in range(relative_start, last_frame_sent)
+        for i in range(relative_start, last_frame_sent):
           self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=last_ack_received+i, ack_num=last_seq_received, data=chunk)
 
-        msg, addr = self.custom_socket.socket.recvfrom(size)
+        msg, addr = self.custom_socket.udp_socket.recvfrom(size)
         last_packet_received = Packet(msg)
         last_ack_received = last_packet_received.ack_num
         attempt = 0
@@ -316,8 +318,8 @@ class Header:
       md5 = self.form_checksum(b)
 
     b.extend( bytearray( field_types['checksum'](md5) ) )
-      if self.data:
-        b.extend( bytearray( field_types['window'](self.data) ) )
+    if self.data:
+      b.extend( bytearray( field_types['window'](self.data) ) )
 
     return bytes(b)
 
@@ -343,6 +345,3 @@ class Header:
 
     return params
 
-
-def socket(ip_addr, port):
-  return Socket(ip_addr, port)
