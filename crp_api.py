@@ -58,8 +58,6 @@ class Socket:
     else:
       raise Exception('Something went wrong during 3-way handshake')
 
-  def close(self):
-
   def send_packet(dst_ip, dst_port, syn=False, ack=False, fin=False, seq_num, ack_num, window=None, data=None):
     header = Header(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=self.seq_num, ack_num=self.ack_num)
     packet = header.packet()
@@ -114,6 +112,9 @@ class Connection:
     self.dst_ip = dst_ip
     self.dst_port = dst_port
 
+  #def close(self):
+
+
   def recv(self):
     '''
     Called by server
@@ -121,16 +122,17 @@ class Connection:
     attempt_num = 0
     buffer = []
     while attempt_num < 3:
-      seq_num, buffer_data  = self.buffer_helper()
-      if seq_num < self.ack_num:
+      new_ack_num, buffer_data  = self.buffer_helper()
+      if new_ack_num <= self.ack_num:
         attempt_num += 1
       else:
-        self.ack_num = seq_num + 1
-        self.seq_num = self.ack_num + self.window_size
+        self.ack_num = new_ack_num
+        self.seq_num += 1
+
         attempt_num = 0
         self.send_ack()
         buffer = buffer.extend(buffer_data)
-
+        self.send_ack()
     if len(buffer) == 0:
       raise Exception("Error, no data was received")
 
@@ -138,7 +140,6 @@ class Connection:
     buffer.sort(key=lambda x,y: x[0] < y[0])
     data = bytes(bytearray([x[1] for x in buffer]))
     return data
-    #TODO: across the whole class, clear up on SEQ_NUM/ACK_NUM confusion in client vs. server scenarios
 
   def buffer_helper(self)
     '''
@@ -152,8 +153,9 @@ class Connection:
         received_buffer.append( (packet.seq_num, packet.data) )
     except:
       received_buffer.sort(key=lambda x,y: x[0] < y[0])#doublecheck the equality sign direction
-      min_ack = self.ack_num - 1
-      if len(received_buffer) == 1:
+      if len(received_buffer) == 0:
+        return 0, []
+      elif len(received_buffer) == 1:
         min_ack = received_buffer[0][0]
       elif len(received_buffer) > 1:
         min_ack_i = 0
@@ -161,7 +163,7 @@ class Connection:
           if received_buffer[i-1][0] - received_buffer[i][0] > 1:
             min_ack = received_buffer[i-1][0]
             min_ack_i = i-1
-      return min_ack, received_buffer[:i]
+      return min_ack+1, received_buffer[:min_ack_i]
 
   def send_data(self, data, recvd_packet):
     '''
@@ -197,7 +199,7 @@ class Connection:
     while last_ack_received < (initial_seq_num + num_chunks)
 
       relative_start = last_ack_received - initial_seq_num
-      relative_last_frame_sent = min(relative_start+window_size-1,num_chunks-1)
+      relative_last_frame_to_send = min(relative_start+window_size-1,num_chunks-1)
       attempt = 0
       try:
         for i in range(relative_start, last_frame_sent)
@@ -206,6 +208,7 @@ class Connection:
         msg, addr = self.custom_socket.socket.recvfrom(size)
         last_packet_received = Packet(msg)
         last_ack_received = last_packet_received.ack_num
+        attempt = 0
       except:
         if attempt < 3:
           print('Attempt {0} failed, resending the exact same window'.format(attempt))
