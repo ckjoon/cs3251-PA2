@@ -29,9 +29,9 @@ class CRPSocket:
     msg, client_addr = self.udp_socket.recvfrom(2048)
     print('Packet received!')
     packet = Packet(msg)
-    print('is it valid: {}'.format(packet.is_valid()))
+    print('is it valid: {}'.format(packet.is_valid))
     print('packet type: {}'.format(packet.packet_type()))
-    if packet.is_valid():
+    if packet.is_valid:
       if packet.packet_type() == 'SYN':
         print('Server is sending out SYNACK to client')
         send_SYNACK(client_addr, packet)
@@ -52,7 +52,7 @@ class CRPSocket:
     ack_num = 0
 
     #forming and sending a SYN packet to the server
-    print(seq_num)
+    #print(seq_num)
     self.send_packet(dst_ip=dst_ip, dst_port=dst_port, seq_num=seq_num, ack_num=ack_num, syn=True)
     print('Client sent out SYN to server, waiting for SYNACK!')
     #syn_header = Header(self.src_port, dst_port, syn=True, ack=False, fin=False, seq_num=self.seq_num, ack_num=self.ack_num)
@@ -244,20 +244,27 @@ class Packet:
   def __init__(self, b):
     b = bytearray(b)
     print(b)
+    #print(len(b))
     self.raw = b
-    self.src_port = bytes(b[:2])
-    self.dst_port = bytes(b[2:4])
-    self.seq_num = bytes(b[4:8])
-    self.ack_num = bytes(b[8:12])
+    self.src_port = struct.unpack(">H", b[:2])[0]
+    #print(self.src_port)
+    self.dst_port = struct.unpack(">H", b[2:4])[0]
+    self.seq_num = struct.unpack(">I", b[4:8])[0]
+    self.ack_num = struct.unpack(">I", b[8:12])[0]
 
-    print(int.from_bytes(bytearray(b[12]), byteorder='big') >> 7)
-    self.ack = (b[12] >> 7) == 1
-    self.syn = ((b[12] >> 6) & 0b01) == 1
-    self.fin = ((b[12] >> 5) & 0b001) == 1
-    self.window = bytes(b[20:24])
-    self.checksum = bytes(b[24:30])
+    self.ack =  (b[12] >> 3) == 1
+    self.syn =  ((b[12] >> 2) & 0b01) == 1
+    self.fin = ((b[12] >> 1) & 0b001) == 1
+    self.lst = (b[12] & 0b0001) == 1
+
+    self.window = struct.unpack(">H", b[16:18])[0]
+    self.checksum = bytes(b[18:20])
     self.data = bytes(b[30:])
+    self.is_valid = self.is_valid()
+    self.type = self.packet_type()
+  def pack(self, ):
 
+  def unpack(self,)
   def packet_type(self):
     action = 'DATA'
     if self.ack and self.syn:
@@ -268,26 +275,36 @@ class Packet:
       action = 'SYN'
     elif self.fin:
       action = 'FIN'
+    elif self.lst:
+      action = 'LST'
     elif self.fin and (self.ack or self.syn):
       print('PACKET TYPE ERROR ERRROR ERROR!!!')
     return action
 
 
   def is_valid(self):
-    rest_of_packet = self.raw[:12]
-    rest_of_packet.extend(self.raw[16:])
-
+    #print('raw: {0}'.format(self.raw))
+    rest_of_packet = bytearray(self.raw[:13])
+    padding = 0
+    rest_of_packet.extend( bytearray( padding.to_bytes(3, byteorder="big" ) ) )
+    #print('rest_of_packet 1st slice: {0}'.format(rest_of_packet))
+    rest_of_packet.extend(bytearray(self.raw[16:18]))
+    rest_of_packet.extend(bytearray(self.raw[20:]))
+    #print('array plugged into md5: {0}'.format(rest_of_packet))
     m = hashlib.md5()
     #print(rest_of_packet)
     m.update(rest_of_packet)
-    calc_checksum = m.digest()[0:4]
-
+    calc_checksum = m.digest()[-2:]
+    #print('original checksum: {0}'.format(self.checksum))
+    #print('calculated checksum: {0}'.format(calc_checksum))
     return self.checksum == calc_checksum
 
+  def __str__(self):
+     return 'byte_rep: {0}\nsrc_port: {1}\ndst_port: {2}\nseq_num: {3}\nack_num: {4}\nack: {5}\nsyn: {6}\nfin: {7}\nlst: {8}\nwindow: {9}\nchecksum: {10}\ndata: {11}\nvalid: {12}\ntype: {13}\n'.format(self.raw, self.src_port, self.dst_port, self.seq_num, self.ack_num, self.ack, self.syn, self.fin, self.lst, self.window, self.checksum, self.data, self.is_valid, self.type)
 
 class Header:
 
-  def __init__(self, src_port, dst_port, syn=False, ack=False, fin=False, seq_num=None, ack_num=None, window_size=None, data=0):
+  def __init__(self, src_port, dst_port, syn=False, ack=False, fin=False, lst=False, seq_num=None, ack_num=None, window_size=None, data=0):
     self.src_port = src_port
     self.dst_port = dst_port
 
@@ -300,7 +317,7 @@ class Header:
     self.window_size = window_size
     if not window_size:
       self.window_size = 65485
-    self.params = [ack, syn, fin]
+    self.params = [ack, syn, fin, lst]#lst sent in with the last packet of data
     self.data = data
 
   def packet(self):
@@ -310,31 +327,38 @@ class Header:
     b.extend( bytearray( self.seq_num.to_bytes(4, byteorder="big") ) )
     b.extend( bytearray( self.ack_num.to_bytes(4, byteorder="big") ) )
     parameter = self.form_param()
-    b.extend( bytearray( parameter.to_bytes(2, byteorder="big") ) )
+    #print(self.params)
+    #print(parameter)
+    #testing = parameter.to_bytes(1, byteorder="big")
+    #print(int.from_bytes(testing, byteorder="big"))
+
+    b.extend( bytearray( parameter.to_bytes(1, byteorder="big") ) )
+    padding = 0
+    b.extend( bytearray( padding.to_bytes(3, byteorder="big" ) ) )
     b.extend( bytearray( self.window_size.to_bytes(2, byteorder="big") ) )
 
     checksum_b = b[:]
     checksum_b.extend( bytearray( self.data.to_bytes(4, byteorder="big") ) )
 
     md5 = self.form_checksum(checksum_b)
-
+    #print('checksum: {0}'.format(md5))
     b.extend( md5 )
-    if self.data:
-      b.extend( bytearray( self.data.to_bytes(4, byteorder="big") ) )
-
+    b.extend( bytearray( self.data.to_bytes(4, byteorder="big") ) )
+    #print(b)
     return bytes(b)
 
   def form_checksum(self, b):
+    #print('array plugged into md5: {0}'.format(b))
     m = hashlib.md5()
     #print(bytes(b))
     m.update(b)
     #print(m.digest())
-    return m.digest()[0:4]
+    return m.digest()[-2:]
 
   def form_param(self):
     b = 0
-    for i in range(3):
-      b += self.params[i]*10^(2-i)
+    for i in range(4):
+      b  = (b << 1) + self.params[i]
 
     return b
 
