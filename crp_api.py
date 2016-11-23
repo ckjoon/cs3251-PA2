@@ -3,38 +3,45 @@
 import argparse
 from socket import *
 import hashlib
-import ctypes
 import random
 import math
+import struct
+
 
 class CRPSocket:
-  def __init__(self, ip_addr='', port=None, server=False):
+  def __init__(self, ip_addr='', port=None, server=False, window_size=65485):
     self.udp_socket = socket(AF_INET, SOCK_DGRAM)
     #self.src_ip = ip_addr
-    #self.src_port = port
+    self.src_port = port
+    self.window_size = window_size
     if server:
       self.udp_socket.bind( (ip_addr, port) )
     self.open_connections = {}#key: client_ip_addr, val: connection object
 
-  def recv(self):
+
+  def accept(self):
     '''
     Contains step 2 in the 3-way handshake is called from here upon reception of a valid SYN packet. The server sends out a SYNACK packet to the client.
     '''
     #print('The server is running on {0} port {1}'.format(ip_addr, port))
     #while True:
+    #print('server called .accept()')
     msg, client_addr = self.udp_socket.recvfrom(2048)
+    print('Packet received!')
     packet = Packet(msg)
+    print('is it valid: {}'.format(packet.is_valid()))
+    print('packet type: {}'.format(packet.packet_type()))
     if packet.is_valid():
       if packet.packet_type() == 'SYN':
+        print('Server is sending out SYNACK to client')
         send_SYNACK(client_addr, packet)
       elif packet.packet_type() == 'ACK':
+        print('Server received ACK from client during handshake!')
         #the connection has established; flipping ack and seq number here because of client/server flipping nature of those
         if client_addr[0] not in self.open_connections.keys():
-          new_connection  = Connection(packet.ack_num, packet.seq_num, self)
+          new_connection  = Connection(packet.ack_num, packet.seq_num, self, client_addr[0], client_addr[1], window_size=packet.window_size)
           self.open_connections[client_addr[0]] = new_connection
-      elif packet.packet_type() == 'DATA':
-        connection = self.open_connections[client_addr[0]]
-        connection.send_ack(packet)
+        return self.open_connections[client_addr[0]]
 
   def connect(self, dst_ip, dst_port):
     '''
@@ -46,22 +53,29 @@ class CRPSocket:
 
     #forming and sending a SYN packet to the server
     print(seq_num)
-    self.send_packet(dst_ip, dst_port, syn=True, seq_num=seq_num, ack_num=ack_num)
+    self.send_packet(dst_ip=dst_ip, dst_port=dst_port, seq_num=seq_num, ack_num=ack_num, syn=True)
+    print('Client sent out SYN to server, waiting for SYNACK!')
     #syn_header = Header(self.src_port, dst_port, syn=True, ack=False, fin=False, seq_num=self.seq_num, ack_num=self.ack_num)
     #syn_packet = syn_header.packet()
     #self.socket.sendto(syn_packet, (dst_ip, dst_port))
 
     #ready to receive SYNACK packet from the server
     msg, server_addr = self.udp_socket.recvfrom(2048)
+    print('Packet received!')
     packet = Packet(msg)
+    print('is it valid: {}'.format(packet.is_valid()))
+    print('packet type: {}'.format(packet.packet_type()))
     if packet.is_valid() and packet.packet_type() == 'SYNACK':
+      print('Client received SYNACK from server during handshake!')
       self.send_ACK(server_addr, packet)
+      print('Connection to server at {0}:{1} establieshed successfully!'.format(server_addr[0], server_addr[1]))
+      return Connection(packet.ack_num, packet.seq_num, self, server_addr[0], server_addr[1], window_size=packet.window_size)
 
     else:
       raise Exception('Something went wrong during 3-way handshake')
 
-  def send_packet(dst_ip, dst_port, seq_num, ack_num, syn=False, ack=False, fin=False, window=None, data=None):
-    header = Header(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=self.seq_num, ack_num=self.ack_num)
+  def send_packet(self, dst_ip, dst_port, seq_num, ack_num, syn=False, ack=False, fin=False, window=None, data=None):
+    header = Header(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=seq_num, ack_num=ack_num)
     packet = header.packet()
     self.udp_socket.sendto(packet, (dst_ip, dst_port))
 
@@ -107,8 +121,8 @@ class Connection:
   Gets returned as a result of a successful handshake to both server and client.
   '''
   def __init__(self, seq_num, ack_num, custom_socket, dst_ip, dst_port, window_size=65485):
-    self.seq_num = seq_num#currently_used_by_server
-    self.ack_num = ack_num#currently_used_by_server
+    self.seq_num = seq_num
+    self.ack_num = ack_num
     self.window_size = window_size
     self.custom_socket = socket
     self.dst_ip = dst_ip
@@ -167,13 +181,13 @@ class Connection:
             min_ack_i = i-1
       return min_ack+1, received_buffer[:min_ack_i]
 
-  def send_data(self, data, recvd_packet):
+  def send_data(self, data):
     '''
     Used by client to send data.
     data (bytes): data to be sent.
     recvd_packet (Packet): last received packet.
     '''
-    window_size = recvd_packet.window / 4 #SWS; in terms of packets
+    window_size = self.window_size / 4 #SWS; in terms of packets
     #list of chunks of data in bytes that can fit in one packet
     data_chunks = []
     data = bytearray(data)
@@ -229,12 +243,14 @@ class Connection:
 class Packet:
   def __init__(self, b):
     b = bytearray(b)
+    print(b)
     self.raw = b
     self.src_port = bytes(b[:2])
     self.dst_port = bytes(b[2:4])
     self.seq_num = bytes(b[4:8])
     self.ack_num = bytes(b[8:12])
 
+    print(int.from_bytes(bytearray(b[12]), byteorder='big') >> 7)
     self.ack = (b[12] >> 7) == 1
     self.syn = ((b[12] >> 6) & 0b01) == 1
     self.fin = ((b[12] >> 5) & 0b001) == 1
@@ -256,36 +272,24 @@ class Packet:
       action = 'FIN'
     elif self.fin and (self.ack or self.syn):
       print('PACKET TYPE ERROR ERRROR ERROR!!!')
-      #TODO:handle later
     return action
 
 
   def is_valid(self):
-    rest_of_packet = self.raw[:24].extend(bytearray(self.data))
+    rest_of_packet = self.raw[:24]
+    rest_of_packet.extend(bytearray(self.data))
 
     m = hashlib.md5()
-    m.update(rest_of_packet.decode('utf-8'))
-    calc_checksum = bytes(m.digest() & 0xffff)
+    #print(rest_of_packet)
+    m.update(bytes(rest_of_packet))
+    calc_checksum = bytes(bytearray(m.digest())[-4:])
 
     return self.checksum == calc_checksum
 
 
 class Header:
-  max_window_size = 65485
-  int16 = ctypes.c_uint16
-  int32 = ctypes.c_uint32
-  fieldTypes = {
-    'src_port': int16,
-    'dst_port': int16,
-    'seq_num': int32,
-    'ack_num': int32,
-    'parameter': int32,
-    'window': int16,
-    'checksum': int16,
-    'data': int32
-    }
 
-  def __init__(self, src_port, dst_port, syn=False, ack=False, fin=False, seq_num=None, ack_num=None, window=None, data=None):
+  def __init__(self, src_port, dst_port, syn=False, ack=False, fin=False, seq_num=None, ack_num=None, window_size=None, data=0):
     self.src_port = src_port
     self.dst_port = dst_port
 
@@ -295,53 +299,44 @@ class Header:
     #if not ack_num:
     #  ack_num = uuid.uuid4()
     self.ack_num = ack_num
-    self.window = window
-    if not window:
-      self.window = max_window_size
-    self.params = [fin, syn, ack]
+    self.window_size = window_size
+    if not window_size:
+      self.window_size = 65485
+    self.params = [ack, syn, fin]
     self.data = data
 
   def packet(self):
     b = bytearray()
-    b.extend( bytearray( field_types['src_port'](self.src_port) ) )
-    b.extend( bytearray( field_types['dst_port'](self.dst_port) ) )
-    b.extend( bytearray( field_types['seq_num'](self.seq_num) ) )
-    b.extend( bytearray( field_types['ack_num'](self.ack_num) ) )
+    b.extend( bytearray( self.src_port.to_bytes(2, byteorder="big") ) )
+    b.extend( bytearray( self.dst_port.to_bytes(2, byteorder="big") ) )
+    b.extend( bytearray( self.seq_num.to_bytes(4, byteorder="big") ) )
+    b.extend( bytearray( self.ack_num.to_bytes(4, byteorder="big") ) )
     parameter = self.form_param()
-    b.extend( bytearray( field_types['parameter'](parameter) ) )
-    b.extend( bytearray( field_types['window'](self.window) ) )
-    if self.data:
-      checksum_b = copy(b)
-      checksum_b.extend( bytearray( field_types['window'](self.data) ) )
-      md5 = self.form_checksum(checksum_b)
-    else:
-      md5 = self.form_checksum(b)
+    b.extend( bytearray( parameter.to_bytes(2, byteorder="big") ) )
+    b.extend( bytearray( self.window_size.to_bytes(2, byteorder="big") ) )
 
-    b.extend( bytearray( field_types['checksum'](md5) ) )
+    checksum_b = b[:]
+    checksum_b.extend( bytearray( self.data.to_bytes(4, byteorder="big") ) )
+
+    md5 = self.form_checksum(checksum_b)
+
+    b.extend( bytearray( md5 ) )
     if self.data:
-      b.extend( bytearray( field_types['window'](self.data) ) )
+      b.extend( bytearray( self.data.to_bytes(4, byteorder="big") ) )
 
     return bytes(b)
 
   def form_checksum(self, b):
     m = hashlib.md5()
-    m.update(b.decode('utf-8'))
-    return m.digest() & 0xffff
+    #print(bytes(b))
+    m.update(bytes(b))
+    #print(m.digest())
+    return bytes(bytearray(m.digest())[-4:])
 
   def form_param(self):
-    byte_params = []
-
+    b = 0
     for i in range(3):
-      if self.params[i]:
-        b = 0b1 << i
-        byte_params.append(b)
+      b += self.params[i]*10^(2-i)
 
-    if len(byte_params) > 1:
-      params = reduce(lambda x,y: x | y, byte_params) << 29
-    elif len(byte_params) == 1:
-      params = byte_params[0] << 29
-    else:
-      params = 0
-
-    return params
+    return b
 
