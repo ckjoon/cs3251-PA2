@@ -256,9 +256,7 @@ class Packet:
     self.fin = ((b[12] >> 5) & 0b001) == 1
     self.window = bytes(b[20:24])
     self.checksum = bytes(b[24:30])
-    self.data = 0
-    if len(b) > 29:
-      self.data = bytes(b[30:])
+    self.data = bytes(b[30:])
 
   def packet_type(self):
     action = 'DATA'
@@ -276,13 +274,13 @@ class Packet:
 
 
   def is_valid(self):
-    rest_of_packet = self.raw[:24]
-    rest_of_packet.extend(bytearray(self.data))
+    rest_of_packet = self.raw[:12]
+    rest_of_packet.extend(self.raw[16:])
 
     m = hashlib.md5()
     #print(rest_of_packet)
-    m.update(bytes(rest_of_packet))
-    calc_checksum = bytes(bytearray(m.digest())[-4:])
+    m.update(rest_of_packet)
+    calc_checksum = m.digest()[0:4]
 
     return self.checksum == calc_checksum
 
@@ -320,7 +318,7 @@ class Header:
 
     md5 = self.form_checksum(checksum_b)
 
-    b.extend( bytearray( md5 ) )
+    b.extend( md5 )
     if self.data:
       b.extend( bytearray( self.data.to_bytes(4, byteorder="big") ) )
 
@@ -329,9 +327,9 @@ class Header:
   def form_checksum(self, b):
     m = hashlib.md5()
     #print(bytes(b))
-    m.update(bytes(b))
+    m.update(b)
     #print(m.digest())
-    return bytes(bytearray(m.digest())[-4:])
+    return m.digest()[0:4]
 
   def form_param(self):
     b = 0
