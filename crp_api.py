@@ -27,22 +27,24 @@ class CRPSocket:
     #print('The server is running on {0} port {1}'.format(ip_addr, port))
     #while True:
     #print('server called .accept()')
-    msg, client_addr = self.udp_socket.recvfrom(2048)
-    print('Packet received!')
-    packet = Packet()
-    packet.from_bytes(msg)
-    print(packet)
-    if packet.is_valid:
-      if packet.type == 'SYN':
-        print('Server is sending out SYNACK to client')
-        self.send_SYNACK(client_addr, packet)
-      elif packet.type == 'ACK':
-        print('Server received ACK from client during handshake!')
-        #the connection has established; flipping ack and seq number here because of client/server flipping nature of those
-        if client_addr[0] not in self.open_connections.keys():
-          new_connection  = Connection(packet.ack_num, packet.seq_num, self, client_addr[0], client_addr[1], window=packet.window)
-          self.open_connections[client_addr[0]] = new_connection
-        return self.open_connections[client_addr[0]]
+    while True:
+      msg, client_addr = self.udp_socket.recvfrom(2048)
+      print('Packet received!')
+      packet = Packet()
+      packet.from_bytes(msg)
+      print(packet)
+      if packet.is_valid:
+        if packet.type == 'SYN':
+          print('Server is sending out SYNACK to client')
+          self.send_SYNACK(client_addr, packet)
+        elif packet.type == 'ACK':
+          print('Server received ACK from client during handshake!')
+          #the connection has established; flipping ack and seq number here because of client/server flipping nature of those
+          if client_addr[0] not in self.open_connections.keys():
+            new_connection  = Connection(packet.ack_num, packet.seq_num, self, client_addr[0], client_addr[1], window=packet.window)
+            self.open_connections[client_addr[0]] = new_connection
+          print('Connection established!')
+          return self.open_connections[client_addr[0]]
 
   def connect(self, dst_ip, dst_port):
     '''
@@ -78,9 +80,9 @@ class CRPSocket:
       print(traceback.print_exc())
       raise Exception('Something went wrong during 3-way handshake')
 
-  def send_packet(self, dst_ip, dst_port, seq_num, ack_num, syn=False, ack=False, fin=False, window=None, data=None):
+  def send_packet(self, dst_ip, dst_port, seq_num, ack_num, syn=False, ack=False, fin=False, lst=False, window=None, data=None):
     packet = Packet()
-    packet.from_arguments(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, seq_num=seq_num, ack_num=ack_num)
+    packet.from_arguments(self.src_port, dst_port, syn=syn, ack=ack, fin=fin, lst=lst, seq_num=seq_num, ack_num=ack_num)
     self.udp_socket.sendto(packet.raw, (dst_ip, dst_port))
 
 
@@ -128,7 +130,7 @@ class Connection:
     self.seq_num = seq_num
     self.ack_num = ack_num
     self.window = window
-    self.custom_socket = socket
+    self.custom_socket = custom_socket
     self.dst_ip = dst_ip
     self.dst_port = dst_port
 
@@ -141,8 +143,9 @@ class Connection:
     '''
     attempt_num = 0
     buffer = []
+    self.custom_socket.udp_socket.settimeout(3)
     while attempt_num < 3:
-      new_ack_num, buffer_data  = self.buffer_helper()
+      new_ack_num, buffer_data, is_last = self.buffer_helper()
       if new_ack_num <= self.ack_num:
         attempt_num += 1
       else:
@@ -153,12 +156,15 @@ class Connection:
         self.send_ack()
         buffer = buffer.extend(buffer_data)
         self.send_ack()
+        if is_last:
+          break
     if len(buffer) == 0:
       raise Exception("Error, no data was received")
 
     buffer = list(set(buffer))
     buffer.sort(key=lambda x,y: x[0] < y[0])
     data = bytes(bytearray([x[1] for x in buffer]))
+    self.custom_socket.udp_socket.settimeout(None)
     return data
 
   def buffer_helper(self):
@@ -166,12 +172,17 @@ class Connection:
     Called by server
     '''
     received_buffer = []
+    last = False
     try:
       while True:
-        msg, addr = self.custom_socket.udp_socket.recvfrom(self.window)
-        packet = Packet(msg)
+        msg, addr = self.custom_socket.udp_socket.recvfrom(2048)
+        packet = Packet()
+        packet.from_bytes(msg)
         received_buffer.append( (packet.seq_num, packet.data) )
+        if packet.type == 'LST':
+          last_seq_num = packet.seq_num
     except:
+      print(traceback.print_exc())
       received_buffer.sort(key=lambda x,y: x[0] < y[0])#doublecheck the equality sign direction
       if len(received_buffer) == 0:
         return 0, []
@@ -183,7 +194,11 @@ class Connection:
           if received_buffer[i-1][0] - received_buffer[i][0] > 1:
             min_ack = received_buffer[i-1][0]
             min_ack_i = i-1
-      return min_ack+1, received_buffer[:min_ack_i]
+      if min_ack == last_seq_num:
+        print('LST packet received')
+        last = True
+      print((min_ack+1, received_buffer[:min_ack_i], last))
+      return (min_ack+1, received_buffer[:min_ack_i], last)
 
   def send_data(self, data):
     '''
@@ -206,7 +221,7 @@ class Connection:
 
     data_chunks.append(bytes(first_chunk))
 
-    initial_seq_num = recvd_packet.ack_num #LAR
+    initial_seq_num = self.seq_num+1 #LAR
 
 
     for i in range(start, len(data), 4):
@@ -214,7 +229,7 @@ class Connection:
     num_chunks = len(data_chunks)
 
     last_ack_received = initial_seq_num
-    last_seq_received = recvd_packet.seq_num
+    last_seq_received = self.ack_num
 
     while last_ack_received < (initial_seq_num + num_chunks):
 
@@ -222,17 +237,24 @@ class Connection:
       relative_last_frame_to_send = min(relative_start+window-1,num_chunks-1)
       attempt = 0
       try:
-        for i in range(relative_start, last_frame_sent):
-          self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=last_ack_received+i, ack_num=last_seq_received, data=chunk)
-
-        msg, addr = self.custom_socket.udp_socket.recvfrom(size)
+        for i in range(relative_start, relative_last_frame_to_send):
+          chunk = data_chunks[i]
+          lst = False
+          if i == (num_chunks-1):
+            lst = True
+          print('chunk sent: {}'.format(i))
+          self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=last_ack_received+i, ack_num=last_seq_received, lst=lst, data=chunk)
+        print('waiting for ack')
+        msg, addr = self.custom_socket.udp_socket.recvfrom(2048)
         last_packet_received = Packet()
         last_packet_received.from_bytes(msg)
         last_ack_received = last_packet_received.ack_num
         attempt = 0
       except:
+        print(traceback.print_exc())
+        a = input('waitin')
         if attempt < 3:
-          print('Attempt {0} failed, resending the exact same window'.format(attempt))
+          #print('Attempt {0} failed, resending the exact same window'.format(attempt))
           attempt += 1
         else:
           raise Exception("All attempts at sending failed, retry again")
