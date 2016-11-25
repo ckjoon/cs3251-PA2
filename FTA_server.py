@@ -20,7 +20,6 @@ def listen(conn):
       cmd = conn.recv().decode('utf-8')
       if debug:
         print('[DEBUG]command received: {}'.format(cmd))
-      input('waitin')
       if cmd == 'POST':
         fname = conn.recv().decode('utf-8')
         if debug:
@@ -28,22 +27,24 @@ def listen(conn):
         data = conn.recv()
         if debug:
           print('[DEBUG]data received successfully: {}'.format(data))
-        with open(os.path.join('serverf', fname), 'wb+') as f:
+        with open(os.path.join('serverf', fname), 'w+b') as f:
           f.write(data)
         if debug:
           print('[DEBUG]data written successfully.')
+        print('\nListening for new commands!')
       elif cmd == 'GET':
         fname = conn.recv().decode('utf-8')
         if debug:
           print('[DEBUG]filename received: {}'.format(fname))
         if os.path.exists(os.path.join('serverf', fname)):
-          with open(os.path.join('serverf', fname), 'rb+') as f:
+          with open(os.path.join('serverf', fname), 'r+b') as f:
             data = f.read()
           if debug:
             print('[DEBUG]data read successfully: {}'.format(data))
           conn.send_data(data)
           if debug:
             print('[DEBUG]data sent successfully: {}'.format(data))
+        print('\nListening for new commands!')
 
   except:
     print(traceback.print_exc())

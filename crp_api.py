@@ -195,42 +195,54 @@ class Connection:
     buffer = list(set(buffer))
     buffer.sort(key=lambda x: x[0])
     if self.debug:
-      print(len(buffer))
-    data = b''.join([x[1] for x in buffer])
+      print('buffer length: {}'.format(len(buffer)))
+      print('buffer: {}'.format(buffer))
+
+    data = bytearray()
+
+    for x in buffer:
+      data.extend(bytearray(x[1]))
+    min_i = 3
+    for i in range(3):
+      #print(data[i])
+      if data[i] != 0:
+        min_i = i
+        break
+    data = data[min_i:]
 
     self.custom_socket.udp_socket.settimeout(None)
     self.custom_socket.seq_num = self.seq_num
     self.custom_socket.ack_num = self.ack_num
-    return data
+    return bytes(data)
 
   def buffer_helper(self):
     '''
     Called by server
     '''
-    received_buffer = []
+    received_buffer = set()
     last = False
     try:
-      while True:
+      while len(received_buffer) < self.custom_socket.recv_window:
         msg, addr = self.custom_socket.udp_socket.recvfrom(65485)
         self.custom_socket.udp_socket.settimeout(3)
         packet = Packet()
         packet.from_bytes(msg)
         if packet.is_valid:
-          received_buffer.append( (packet.seq_num, packet.data, packet.type) )
+          received_buffer.add( (packet.seq_num, packet.data, packet.type) )
           if self.debug:
             print('receiving:')
             print(packet)
-
     except:
       if self.debug:
-        print(len(received_buffer))
+        print('size of buffer: {}'.format(len(received_buffer)))
+      received_buffer = list(received_buffer)
       if len(received_buffer) == 0:
         return 0, [], False
       elif len(received_buffer) == 1:
         min_ack = received_buffer[0][0]
         min_ack_i = 0
       elif len(received_buffer) > 1:
-        received_buffer = list(set(received_buffer)).sort(key=lambda x: x[0])
+        received_buffer.sort(key=lambda x: x[0])
         for i in range(1, len(received_buffer)):
           if received_buffer[i-1][0] + 1 == received_buffer[i][0]:
             min_ack_i = i
@@ -238,10 +250,11 @@ class Connection:
           else:
             break
 
-        if received_buffer[min_ack_i][2] == 'LST':
-          last = True
+      if received_buffer[min_ack_i][2] == 'LST':
+        last = True
 
       return (min_ack+1, received_buffer[:min_ack_i+1], last)
+
 
   def send_data(self, data):
     '''
@@ -255,18 +268,19 @@ class Connection:
       print(data)
     r = len(data) % 4
     padding = (4 - r) % 4
+    start = 4 - r
 
     first_chunk = bytearray()
     for i in range(padding):
       first_chunk.append(0x0)
-    for i in range(padding, 4):
+    for i in range(4-padding):
       first_chunk.append(data[i])
 
     data_chunks.append(bytes(first_chunk))
 
     initial_seq_num = self.seq_num
 
-    for i in range(padding, len(data)-5, 4):
+    for i in range(start, len(data)-3, 4):
       data_chunks.append(bytes(data[i:i+4]))
 
     num_chunks = len(data_chunks)
@@ -318,7 +332,7 @@ class Connection:
           raise Exception("All attempts at sending failed, retry again")
     self.seq_num = last_ack_received
     self.ack_num = self.ack_num
-    print('Data sent successfully!')
+    #print('Data sent successfully!')
 
   def send_ack(self):
     '''

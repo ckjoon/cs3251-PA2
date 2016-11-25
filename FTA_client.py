@@ -19,16 +19,16 @@ def get_args():
 def handle_post(conn, fname):
   try:
     if os.path.exists(os.path.join('clientf', fname)):
-      with open(os.path.join('clientf', fname), 'rb+') as f:
+      with open(os.path.join('clientf', fname), 'r+b') as f:
         data = f.read()
+      conn.send_data('POST'.encode('utf-8'))
+      #print('command sent')
+      conn.send_data(fname.encode('utf-8'))
+      #print('filename sent')
+      conn.send_data(data)
       if debug:
         print('[DEBUG]data sent: {0}'.format(data))
-      conn.send_data('POST'.encode('utf-8'))
-      print('command sent')
-      conn.send_data(fname.encode('utf-8'))
-      print('filename sent')
-      conn.send_data(data)
-      print('data sent')
+      #print('data sent')
     else:
       print('File you are trying to POST does not exist')
   except:
@@ -66,6 +66,7 @@ def main():
           print('Incorrect number of arguments for command \'post\': it must have one argument \'F\'\n')
           continue
         if connected:
+
           filename = command.split()[1]
           handle_post(connection, filename)
         else:
@@ -76,7 +77,7 @@ def main():
           print('Incorrect number of arguments for command \'get\': it must have one argument \'F\'\n')
           continue
         if connected:
-          filename = command.split()[1]
+          filename = command.split(' ')[1]
           print('implementing getting file....')
         else:
           print('Cannot get file until the connection is established. Please use \'connect\' command to connect to server before using \'get\' again.\n')
