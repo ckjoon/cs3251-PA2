@@ -70,34 +70,6 @@ def main():
     possible_commands = {'terminate', 'window', 'help'}
   except:
     print(traceback.print_exc())
-'''
-    while True:
-      command = input('Type a command to continue. For the list of available commands, type \'help\': ')
-      if debug:
-        print('[DEBUG]user entered \'{}\'.\n'.format(command))
-        if command.lower().split()[0] in possible_commands:
-          print('[DEBUG]the command entered is valid')
-
-      if command.lower() == 'help':
-        print('The available commands are:\n\n*window W: the maximum window size the server can receive\n*terminate: shutdown the server gracefully\n')
-
-      elif command.lower().split()[0] == 'window':
-        try:
-          new_window_size = int(command.lower().split()[1])
-          if new_window_size < 1:
-            raise Exception()
-          client.recv_window = new_window_size
-          print('Receiwing window is set to size {}'.format(new_window_size))
-        except:
-          print('Invalid window size used for \'window\' command!\n')
-
-      elif command.lower() == 'terminate':
-        client.initiate_close()
-        break
-
-      else:
-        print('Command you entered is not recognized as valid, please try again.\n')
-'''
 
 if __name__ == '__main__':
   args = get_args()
