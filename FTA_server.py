@@ -2,14 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import argparse, threading, time, os.path, traceback
-from socket import *
-
-command = ''
-
-def input_thread():
-    global command
-    while True:
-      command = input("> ")
+#from socket import *
+from crp_api import *
 
 
 def get_args():
@@ -19,106 +13,86 @@ def get_args():
 
   return parser.parse_args()
 
+def listen(conn):
+  cmd = None
+  try:
+    while True:
+      cmd = conn.recv().decode('utf-8')
+      if debug:
+        print('[DEBUG]command received: {}'.format(cmd))
+      input('waitin')
+      if cmd == 'POST':
+        fname = conn.recv().decode('utf-8')
+        if debug:
+          print('[DEBUG]filename received: {}'.format(fname))
+        data = conn.recv()
+        if debug:
+          print('[DEBUG]data received successfully: {}'.format(data))
+        with open(os.path.join('serverf', fname), 'wb+') as f:
+          f.write(data)
+        if debug:
+          print('[DEBUG]data written successfully.')
+      elif cmd == 'GET':
+        fname = conn.recv().decode('utf-8')
+        if debug:
+          print('[DEBUG]filename received: {}'.format(fname))
+        if os.path.exists(os.path.join('serverf', fname)):
+          with open(os.path.join('serverf', fname), 'rb+') as f:
+            data = f.read()
+          if debug:
+            print('[DEBUG]data read successfully: {}'.format(data))
+          conn.send_data(data)
+          if debug:
+            print('[DEBUG]data sent successfully: {}'.format(data))
+
+  except:
+    print(traceback.print_exc())
+    print('Error while listening.\n')
 
 def main():
   try:
     global window
-    ip_addr = '172.17.0.2'
+    #ip_addr = '172.17.0.3'
     server_port = port
-    server_socket = socket(AF_INET, SOCK_STREAM)
-    server_socket.bind((ip_addr, port))
-    server_socket.listen(15)
-    print('The server is running on {0} port {1}'.format(ip_addr, port))
-    while True:
-      conn_socket, addr = server_socket.accept()
-      closed = False
-      while not closed: 
-        content = conn_socket.recv(window).decode()
-        send = False
-        while (content):
-          if send == False:
-            if "FILESEND" in content:
-              print('File will be sent from client')
-              split_command = content.split(':')
-              filename = 'post/' + split_command[1]
-              count = 0
-              while (os.path.exists(filename)):
-                print('[Debug] duplicate detected')
-                count = count + 1
-                extension = split_command[1].split('.')
-                filename= ('{0} ({1}).{2}').format('post/'+extension[0], str(count), extension[1])
-                print('[Debug] File name  ' +filename)
-              f = open(filename,'wb')
-              print('Created file {0} to receive from client'.format(filename))
-              content = conn_socket.recv(window).decode()
-              if debug:
-                print('[DEBUG] Received Content: ' + str(content.encode()))
-            elif "FILERECEIVE" in content:
-              print('File will be sent to the client')
-              filename = content.split(':')
-              try:
-                f = open(filename[1],'rb')
-                print('Opened file {0}'.format(filename))
-              except IOError:
-                print('File does not exist')
-                client_socket.close()
-              send = True  
-            else:   
-              #Receive file from client     
-              f.write(content.encode())
-              content = conn_socket.recv(window).decode()
-              if debug:
-                  print('[DEBUG] Received Content: '+ str(content.encode()))
-
-              print(content)
-              if 'ENDPOST' in content:
-                f.close()
-                print('Completed receiving {0}'.format(filename))
-                content = None
-          if send:
-            #send file to client     
-            content = f.read(window)
-            if debug:
-              print('[DEBUG] sent content: '+ str(content.decode()))
-
-            if debug:
-              print(content.decode())
-            conn_socket.send(content)
-            if 'ENDPOST' in content.decode():
-              f.close()
-              print('Completed sending {0}'.format(filename[1]))
-              content = None
-        if (send):
-          conn_socket.send('ENDPOST'.encode())
-        if(debug):
-          print('Waiting for client\'s request.')
-    #if command:
-      # print(command)
-      #print(command)
-      #print('inside command')
-
+    server = CRPSocket(port=server_port, server=True, debug=debug)
+    print('Server is running on port {}!'.format(server_port))
+    connection = server.accept()
+    listen(connection)
+    possible_commands = {'terminate', 'window', 'help'}
   except:
     print(traceback.print_exc())
-    print('Something went very wrong...')
-    try:  
-      server_socket.close()
+'''
+    while True:
+      command = input('Type a command to continue. For the list of available commands, type \'help\': ')
       if debug:
-        print('[DEBUG] Closing Socket')
-    except UnboundLocalError:
-      print('[DEBUG] Socket has not been initialized')
+        print('[DEBUG]user entered \'{}\'.\n'.format(command))
+        if command.lower().split()[0] in possible_commands:
+          print('[DEBUG]the command entered is valid')
 
-    try:
-      f.close()
-      if debug:
-        print('[DEBUG] Closing File')
-    except UnboundLocalError:
-      print('[DEBUG] File has not been initialized')
+      if command.lower() == 'help':
+        print('The available commands are:\n\n*window W: the maximum window size the server can receive\n*terminate: shutdown the server gracefully\n')
+
+      elif command.lower().split()[0] == 'window':
+        try:
+          new_window_size = int(command.lower().split()[1])
+          if new_window_size < 1:
+            raise Exception()
+          client.recv_window = new_window_size
+          print('Receiwing window is set to size {}'.format(new_window_size))
+        except:
+          print('Invalid window size used for \'window\' command!\n')
+
+      elif command.lower() == 'terminate':
+        client.initiate_close()
+        break
+
+      else:
+        print('Command you entered is not recognized as valid, please try again.\n')
+'''
 
 if __name__ == '__main__':
   args = get_args()
   global port, debug, window
   port = args.port
   debug = args.debug
-  window = 1024
   main()
-

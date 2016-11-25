@@ -3,9 +3,9 @@
 
 import argparse
 import os
-from socket import *
+#from socket import *
 import traceback
-
+from crp_api import *
 
 
 def get_args():
@@ -16,143 +16,99 @@ def get_args():
 
   return parser.parse_args()
 
-def commands_available():
-  print('Available commands:')
-  print('usage: disconnect')
-  print('disconnects client gracefully ')
-  print('usage: window [number]')
-  print('Set window for client')
-  print('usage: get [filename]')
-  print('gets [filename] from the server  ')
-  print('usage: post [filename]')
-  print('post [filename] from the server  ')
-
-
-def main():
+def handle_post(conn, fname):
   try:
-    global window
-    connect = input('Type in \'connect\' to connect: ')
-    while (connect != 'connect'):
-      print('Incorrect input format')
-      connect = input('Type in \'connect\' to connect: ')
-    if connect == 'connect':
-      try:
-        client_socket = socket(AF_INET, SOCK_STREAM)
-        client_socket.connect((server, port))
-        if debug:
-          print('The client is connected to server {0} on port {1}'.format(server,port))
-      except:
-        print ('Client was not able to connect to server, make sure your server address is correct!')
-        return
-      while True:
-        command = input('What would you like the client to do? Type help to see list of commands ')
-        if debug:
-          print('[DEBUG]user input: '+command)
-        command_values = command.split()
-        possible_commands = ['disconnect', 'window', 'get', 'post', 'help']
-        if(command_values[0] in possible_commands):
-          if debug:
-              print('[DEBUG]user input is valid')
-          if command_values[0] == 'disconnect':
-            client_socket.close()
-            return
-          if command_values[0] == 'window':
-            window = int(command_values[0])
-            print('Window size set to '+window)
-            print ('window')
-          if command_values[0] == 'get':
-            if debug:
-              print('[DEBUG]get file ' + command_values[1])
-            request = 'FILERECEIVE:'+command_values[1]
-            client_socket.send(request.encode())
-            if debug:
-              print('sent content: '+request)
-            try:
-              count = 0
-              filename = 'get/'+command_values[1]
-              while (os.path.exists(filename)):
-                print('[Debug] duplicate detected')
-                count = count + 1
-                extension = command_values[1].split('.')
-                filename= ('{0} ({1}).{2}').format('get/'+extension[0], str(count), extension[1])
-                print('[Debug] New File name  ' +filename)
-
-              f = open(filename,'wb')
-
-              if debug:
-                print('[DEBUG]opened file at location ' +'get/'+command_values[1] )
-              
-              content = client_socket.recv(window).decode()
-              
-              while content :
-                if debug:
-                  print('[DEBUG]received content: '+content)
-              
-                f.write(content.encode())
-                content = client_socket.recv(window).decode()
-          
-                if 'ENDPOST' in content:
-                  f.close()
-                  if debug:
-                    print('[DEBUG]File closed')
-                  print ('Completed receiving {0} '.format(command_values[1]) )
-                  content = None
-            except IOError:
-              print('could not open file')   
-              
-          if command_values[0] == 'post':
-            if debug:
-              print('[DEBUG]post/upload file ' + command_values[1])
-            try:
-              f = open(command_values[1],'rb')
-              if debug:
-                print('[DEBUG]File,{0} opened'.format(command_values[1]))
-              request = 'FILESEND:'+command_values[1]
-              client_socket.send(request.encode())
-              if debug:
-                print('[DEBUG]sent content: '+ request)
-              content = f.read(window)
-              while (content):
-                client_socket.send(content)
-                content = f.read(window)
-                if debug:
-                  print('[DEBUG]sent content: ' + str(content.decode()))
-              f.close()
-              client_socket.send('ENDPOST'.encode())
-              print('Completed posting {0}'.format(command_values[1]))
-            except FileNotFoundError:
-              print('File does not exist')
-              client_socket.close()
-          if command_values[0] == 'help':
-            commands_available()
-        else:
-          print('Incorrect command format Please put in your command again')
-
+    if os.path.exists(os.path.join('clientf', fname)):
+      with open(os.path.join('clientf', fname), 'rb+') as f:
+        data = f.read()
+      if debug:
+        print('[DEBUG]data sent: {0}'.format(data))
+      conn.send_data('POST'.encode('utf-8'))
+      print('command sent')
+      conn.send_data(fname.encode('utf-8'))
+      print('filename sent')
+      conn.send_data(data)
+      print('data sent')
+    else:
+      print('File you are trying to POST does not exist')
   except:
     print(traceback.print_exc())
-    print('Something went wrong / user tserminated the client')
-    try:  
-      client_socket.close()
-      if debug:
-        print('[DEBUG] Closing Socket')
-    except UnboundLocalError:
-      print('[DEBUG] Socket has not been initialized')
+    print('Error while trying to post the file, please make sure the file name you provided is correct and try again.\n')
 
-    try:
-      f.close()
+def main():
+  possible_commands = {'disconnect', 'window', 'get', 'post', 'help'}
+  try:
+    global window
+    connected = False
+    client = CRPSocket(port=8591, debug=debug)
+    while True:
+      command = input('Type a command to continue. For the list of available commands, type \'help\': ')
       if debug:
-        print('[DEBUG] Closing File')
-    except UnboundLocalError:
-      print('[DEBUG] File has not been initialized')
+        print('[DEBUG]user entered \'{}\'.\n'.format(command))
+        if command.lower().split()[0] in possible_commands:
+          print('[DEBUG]the command entered is valid')
 
+      if command.lower() == 'help':
+        print('\nThe available commands are:\n\n*connect: connects to the FTA server.\n*get F: downloads file named F from the server.\n*post F: uploads file F to the server.\n*window W: the maximum window size the client can receive\n*disconnect: terminate the connection gracefully\n')
+      elif command.lower() == 'connect':
+        if not connected:
+          try:
+            connection = client.connect(server, port)
+            connected = True
+            print('Connection to server {0} on port {1} established successfully!'.format(server,port))
+          except:
+            print(traceback.print_exc())
+            print('Client was not able to connect to server {0} on port {1}, make sure your server address is correct!'.format(server, port))
+        else:
+          print('Cannot call \'call\' command: client is already connected to the server.\n')
+      elif command.lower().split()[0] == 'post':
+        if len(command.split()) != 2:
+          print('Incorrect number of arguments for command \'post\': it must have one argument \'F\'\n')
+          continue
+        if connected:
+          filename = command.split()[1]
+          handle_post(connection, filename)
+        else:
+          print('Cannot post file until the connection is established. Please use \'connect\' command to connect to server before using \'post\' again.\n')
+
+      elif command.lower().split()[0] == 'get':
+        if len(command.split()) != 2:
+          print('Incorrect number of arguments for command \'get\': it must have one argument \'F\'\n')
+          continue
+        if connected:
+          filename = command.split()[1]
+          print('implementing getting file....')
+        else:
+          print('Cannot get file until the connection is established. Please use \'connect\' command to connect to server before using \'get\' again.\n')
+
+      elif command.lower().split()[0] == 'window':
+
+        if len(command.split()) != 2:
+          print('Incorrect number of arguments for command \'window\': it must have one argument \'W\'\n')
+          continue
+        try:
+          new_window_size = int(command.lower().split()[1])
+          if new_window_size < 1:
+            raise Exception()
+          client.recv_window = new_window_size
+          print('Receiwing window is set to size {}'.format(new_window_size))
+        except:
+          print('Invalid window size used for \'window\' command!\n')
+      elif command.lower() == 'disconnect':
+        connected = False
+        client.initiate_close()
+        break
+
+      else:
+        print('\nThe command you have entered is not recognized as valid, please try again.\n')
+  except:
+    print(traceback.print_exc())
 
 if __name__ == '__main__':
   args = get_args()
-  global server, port, debug, window 
+  global server, port, debug, window
   server = args.server
   port = args.port
   debug = args.debug
   window = 1024
   main()
-
-#./sensor-udp -s 172.17.0.3 -p 8591 –u 'Room100SE' -c 'eye<3sockets!' -r 68.2
