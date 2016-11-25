@@ -1,5 +1,10 @@
 # cs3251-PA2
 Advanced TCP implementation
+
+Team members: Joon Choi, Oleg Filatov
+
+Super basics: run client as "python3 FTA-client.py" and server as "python3 FTA-server.py". Then execute commands required in the assignment.
+
 # FTA Server
 ● Command-line: FTA-server X
 
