@@ -37,6 +37,9 @@ def listen(conn):
         if debug:
           print('[DEBUG]filename received: {}'.format(fname))
         if os.path.exists(os.path.join('serverf', fname)):
+          if debug:
+            print('[DEBUG]file exists')
+          conn.send_data('EXST'.encode('utf-8'))
           with open(os.path.join('serverf', fname), 'r+b') as f:
             data = f.read()
           if debug:
@@ -44,6 +47,11 @@ def listen(conn):
           conn.send_data(data)
           if debug:
             print('[DEBUG]data sent successfully: {}'.format(data))
+        else:
+          if debug:
+            print('[DEBUG]file does NOT exists')
+          conn.send_data('NONE'.encode('utf-8'))
+
         print('\nListening for new commands!')
 
   except:

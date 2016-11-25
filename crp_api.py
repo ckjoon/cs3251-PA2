@@ -97,6 +97,7 @@ class CRPSocket:
       print('is it valid: {}'.format(packet.is_valid))
       print('packet type: {}'.format(packet.type))
     if packet.is_valid and packet.type == 'SYNACK':
+      self.src_port = packet.dst_port
       if self.debug:
         print('Client received SYNACK from server during handshake!')
       self.send_ACK(server_addr, packet)
@@ -196,7 +197,7 @@ class Connection:
     buffer.sort(key=lambda x: x[0])
     if self.debug:
       print('buffer length: {}'.format(len(buffer)))
-      print('buffer: {}'.format(buffer))
+      #print('buffer: {}'.format(buffer))
 
     data = bytearray()
 
@@ -267,20 +268,22 @@ class Connection:
     if self.debug:
       print(data)
     r = len(data) % 4
-    padding = (4 - r) % 4
-    start = 4 - r
+    if r == 0:
+      padding = 0
+    else:
+      padding = 4 - r
 
     first_chunk = bytearray()
     for i in range(padding):
       first_chunk.append(0x0)
-    for i in range(4-padding):
+    for i in range(r):
       first_chunk.append(data[i])
 
     data_chunks.append(bytes(first_chunk))
 
-    initial_seq_num = self.seq_num
+    initial_seq_num = self.seq_num + 1
 
-    for i in range(start, len(data)-3, 4):
+    for i in range(r, len(data)-3, 4):
       data_chunks.append(bytes(data[i:i+4]))
 
     num_chunks = len(data_chunks)
@@ -304,7 +307,7 @@ class Connection:
             lst = True
 
           self.custom_socket.send_packet(self.dst_ip, self.dst_port, seq_num=last_ack_received+i, ack_num=self.ack_num, lst=lst, data=chunk)
-          self.ack_num += 1
+          #self.ack_num += 1
         if self.debug:
           print('waiting for ack')
         msg, addr = self.custom_socket.udp_socket.recvfrom(65485)
@@ -331,7 +334,7 @@ class Connection:
         else:
           raise Exception("All attempts at sending failed, retry again")
     self.seq_num = last_ack_received
-    self.ack_num = self.ack_num
+    self.ack_num = self.ack_num + 1
     #print('Data sent successfully!')
 
   def send_ack(self):

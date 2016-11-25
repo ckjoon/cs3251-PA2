@@ -35,6 +35,35 @@ def handle_post(conn, fname):
     print(traceback.print_exc())
     print('Error while trying to post the file, please make sure the file name you provided is correct and try again.\n')
 
+def handle_get(conn, fname):
+  try:
+    conn.send_data('GET'.encode('utf-8'))
+    if debug:
+      print('[DEBUG]command sent: GET')
+    #print('command sent')
+    conn.send_data(fname.encode('utf-8'))
+    if debug:
+      print('[DEBUG]filename sent: {}'.format(fname))
+    #print('filename sent')
+    data = conn.recv()
+    print(data)
+    if data == b'EXST':
+      print('[DEBUG]file found')
+      data = conn.recv()
+      if debug:
+        print('[DEBUG]data received successfully: {}'.format(data))
+      with open(os.path.join('clientf', fname), 'w+b') as f:
+        f.write(data)
+      if debug:
+        print('[DEBUG]data written successfully.')
+    else:
+      print('File with this name was not found on server, try another one.')
+    #print('data sent')
+
+  except:
+    print(traceback.print_exc())
+    print('Error while trying to get a file, please make sure the file name you provided is correct and try again.\n')
+
 def main():
   possible_commands = {'disconnect', 'window', 'get', 'post', 'help'}
   try:
@@ -46,7 +75,7 @@ def main():
       if debug:
         print('[DEBUG]user entered \'{}\'.\n'.format(command))
         if command.lower().split()[0] in possible_commands:
-          print('[DEBUG]the command entered is valid')
+          print('[DEBUG]the command entered is valid\n')
 
       if command.lower() == 'help':
         print('\nThe available commands are:\n\n*connect: connects to the FTA server.\n*get F: downloads file named F from the server.\n*post F: uploads file F to the server.\n*window W: the maximum window size the client can receive\n*disconnect: terminate the connection gracefully\n')
@@ -77,8 +106,8 @@ def main():
           print('Incorrect number of arguments for command \'get\': it must have one argument \'F\'\n')
           continue
         if connected:
-          filename = command.split(' ')[1]
-          print('implementing getting file....')
+          filename = command.split()[1]
+          handle_get(connection, filename)
         else:
           print('Cannot get file until the connection is established. Please use \'connect\' command to connect to server before using \'get\' again.\n')
 
