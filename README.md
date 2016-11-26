@@ -5,6 +5,17 @@ Team members: Joon Choi (jchoi307@gatech.edu), Oleg Filatov (ofilatov3@gatech.ed
 
 Super basics: run client as "python3 FTA-client.py" and server as "python3 FTA-server.py". Then execute commands required in the assignment.
 
+# UPDATE from 11/25/2016
+* Not implemented: listening to commands on server; closing connection doesn't work very well, but it does close connection on the client side (albeit not gracefully most of the time); groundwork for the server-side commands is done in code, but we ran out of time while figuring out multithreading needed in order to listen to commands on the server side. Does not support more than one connection at a time.
+* Working: everything else from the rubric; most of the errors on the user side were handled.
+* Extra credit claims: bi-directional data transfer + put (implemented as POST) command.
+* We profoundly apologize beforehand, but we ran out of time while working on this homework, and since we prioritized features/code, we didn't provide sample output.
+
+# How to start
+* Client: "python3 FTA_client.py -s 172.17.0.3 -p 8591 -d" and then simply utilize any of the commands below
+* Server: "python3 FTA_server.py -p 8591 -d"
+
+
 # FTA Server
 ● Command-line: FTA-server X
 
@@ -92,4 +103,3 @@ Super basics: run client as "python3 FTA-client.py" and server as "python3 FTA-s
 		* **raw (bytes)**: formed packet represented as bytes.
     * **type (str)**: one of SYN/ACK/FIN/LST/DATA, self-explanatory.
     * **is_valid (bool)**: determined by an internal function; indicates whether the packet is corrupt or not.
-

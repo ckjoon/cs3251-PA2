@@ -22,13 +22,10 @@ def handle_post(conn, fname):
       with open(os.path.join('clientf', fname), 'r+b') as f:
         data = f.read()
       conn.send_data('POST'.encode('utf-8'))
-      #print('command sent')
       conn.send_data(fname.encode('utf-8'))
-      #print('filename sent')
       conn.send_data(data)
       if debug:
         print('[DEBUG]data sent: {0}'.format(data))
-      #print('data sent')
     else:
       print('File you are trying to POST does not exist')
   except:
@@ -40,11 +37,9 @@ def handle_get(conn, fname):
     conn.send_data('GET'.encode('utf-8'))
     if debug:
       print('[DEBUG]command sent: GET')
-    #print('command sent')
     conn.send_data(fname.encode('utf-8'))
     if debug:
       print('[DEBUG]filename sent: {}'.format(fname))
-    #print('filename sent')
     data = conn.recv()
     print(data)
     if data == b'EXST':
@@ -57,8 +52,7 @@ def handle_get(conn, fname):
       if debug:
         print('[DEBUG]data written successfully.')
     else:
-      print('File with this name was not found on server, try another one.')
-    #print('data sent')
+
 
   except:
     print(traceback.print_exc())

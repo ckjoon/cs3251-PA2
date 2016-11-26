@@ -13,13 +13,10 @@ def get_args():
 
   return parser.parse_args()
 
-
+#UNUSED
 def console_commands_listen():
   possible_commands = {'window', 'terminate', 'help'}
   try:
-    global window
-    connected = False
-    client = CRPSocket(port=8591, debug=debug)
     while True:
       command = input('Type a command to continue. For the list of available commands, type \'help\': ')
       if debug:
