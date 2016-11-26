@@ -20,37 +20,14 @@ class CRPSocket:
     if self.server:
       self.udp_socket.bind( (ip_addr, port) )
 
-  def initiate_close(self):
-    self.udp_socket.settimeout(3)
-    attempts = 0
-    while attempts < 3:
-      try:
-        self.send_FIN()
-        msg, client_addr = self.udp_socket.recvfrom(65485)
-        packet = Packet()
-        packet.from_bytes(msg)
-        if packet.is_valid and packet.type == 'ACK' and packet.ack_num == (self.seq_num + 1) and packet.seq_num == self.ack_num:
-          if self.debug:
-            print('ACK for closing received, waiting for FIN!')
-          msg, client_addr = self.udp_socket.recvfrom(65485)
-          packet = Packet()
-          packet.from_bytes(msg)
-          if packet.is_valid and packet.type == 'FIN' and packet.ack_num == (self.seq_num + 1) and packet.seq_num == self.ack_num+1:
-            if self.debug:
-              print('FIN for closing received, sending ACK and terminating!')
-            self.udp_socket.close()
-      except:
-        attempts += 1
-    print('Closing, but not gracefully')
-    self.udp_socket.close()
-
   def accept(self):
     '''
     Contains step 2 in the 3-way handshake is called from here upon reception of a valid SYN packet. The server sends out a SYNACK packet to the client.
     '''
 
     while True:
-      msg, client_addr = self.udp_socket.recvfrom(65485)
+      msg, client_addr = self.udp_socket.recvfrom(self.recv_window*4)
+      self.udp_socket.settimeout(3)
       if self.debug:
         print('Packet received!')
       packet = Packet()
@@ -70,6 +47,7 @@ class CRPSocket:
           new_connection  = Connection(packet.ack_num, packet.seq_num+1, self, client_addr[0], client_addr[1], send_window=packet.window)
 
           print('Connection established with {0}:{1}!'.format(client_addr[0], client_addr[1]))
+          self.udp_socket.settimeout(None)
           return new_connection
 
 
@@ -82,13 +60,13 @@ class CRPSocket:
     ack_num = 0
 
     #forming and sending a SYN packet to the server
-
+    self.udp_socket.settimeout(3)
     self.send_packet(dst_ip=dst_ip, dst_port=dst_port, seq_num=seq_num, ack_num=ack_num, syn=True)
     if self.debug:
       print('Client sent out SYN to server, waiting for SYNACK!')
 
     #ready to receive SYNACK packet from the server
-    msg, server_addr = self.udp_socket.recvfrom(65485)
+    msg, server_addr = self.udp_socket.recvfrom(self.recv_window*4)
     if self.debug:
       print('Packet received!')
     packet = Packet()
@@ -103,7 +81,7 @@ class CRPSocket:
       self.send_ACK(server_addr, packet)
       if self.debug:
         print('Connection to server at {0}:{1} establieshed successfully!'.format(server_addr[0], server_addr[1]))
-
+      self.udp_socket.settimeout(None)
       return Connection(packet.ack_num+1, packet.seq_num+1, self, server_addr[0], server_addr[1], send_window=packet.window)
 
     else:
@@ -136,11 +114,11 @@ class CRPSocket:
     Function that directly sends the FIN packet. Called by the client.
     '''
     #Making seq_num sent by the client to be incremented ack_num from the server
-    new_ack_num = self.ack_num + 1
+    #self.ack_num += 1
     #Client ack is server's ack_num
-    new_seq_num = self.seq_num + 1
+    #self.seq_num += 1
 
-    self.send_packet(server_addr[0], server_addr[1], ack=True, seq_num=new_seq_num, ack_num=new_ack_num)
+    self.send_packet(server_addr[0], server_addr[1], ack=True, seq_num=self.seq_num, ack_num=self.ack_num)
 
   def send_SYNACK(self, client_addr, packet):
     '''
@@ -168,6 +146,48 @@ class Connection:
     self.dst_port = dst_port
 
 
+  def close(self):
+    self.custom_socket.udp_socket.settimeout(3)
+    attempts = 0
+    backup_seq_num = self.seq_num
+    backup_ack_num = self.ack_num
+
+    while attempts < 3:
+      try:
+        self.custom_socket.ack_num = backup_ack_num
+        self.custom_socket.seq_num = backup_seq_num
+        self.seq_num += 1
+        self.custom_socket.seq_nume += 1
+
+        self.send_fin()
+        msg, client_addr = self.custom_socket.udp_socket.recvfrom(self.custom_socket.recv_window*4)
+        packet = Packet()
+        packet.from_bytes(msg)
+        if packet.is_valid and packet.type == 'ACK' and packet.ack_num == (self.seq_num + 1) and packet.seq_num == self.ack_num:
+          if self.debug:
+            print('ACK for closing received, waiting for FIN!')
+          self.ack_num += 1
+          self.custom_socket.ack_num += 1
+
+          msg, client_addr = self.udp_socket.recvfrom(self.custom_socket.recv_window*4)
+
+          packet = Packet()
+          packet.from_bytes(msg)
+          if packet.is_valid and packet.type == 'FIN' and packet.ack_num == (self.seq_num + 1) and packet.seq_num == self.ack_num:
+            self.ack_num += 1
+            self.custom_socket.ack_num += 1
+
+            self.seq_num += 1
+            self.custom_socket.seq_num += 1
+
+            if self.debug:
+              print('FIN for closing received terminating!')
+            del self
+      except:
+        attempts += 1
+    print('Closing, but not gracefully')
+    del self
+
   def recv(self):
     '''
     Called by server
@@ -176,7 +196,7 @@ class Connection:
     buffer = []
 
     while attempt_num < 3:
-      new_ack_num, buffer_data, is_last = self.buffer_helper()
+      new_ack_num, buffer_data = self.buffer_helper()
       self.custom_socket.udp_socket.settimeout(3)
       if new_ack_num <= self.ack_num:
         attempt_num += 1
@@ -188,8 +208,14 @@ class Connection:
         self.send_ack()
         buffer.extend(buffer_data)
 
-        if is_last:
+        if buffer_data[-1][2] == 'LST':
           break
+        elif buffer_data[-1][2] == 'FIN':
+          print('Connection closing request received!\n')
+          self.seq_num += 1
+          self.send_fin()
+          break
+
     if len(buffer) == 0:
       raise Exception("Error, no data was received")
 
@@ -221,10 +247,9 @@ class Connection:
     Called by server
     '''
     received_buffer = set()
-    last = False
     try:
       while len(received_buffer) < self.custom_socket.recv_window:
-        msg, addr = self.custom_socket.udp_socket.recvfrom(65485)
+        msg, addr = self.custom_socket.udp_socket.recvfrom(self.custom_socket.recv_window*4)
         self.custom_socket.udp_socket.settimeout(3)
         packet = Packet()
         packet.from_bytes(msg)
@@ -251,10 +276,7 @@ class Connection:
           else:
             break
 
-      if received_buffer[min_ack_i][2] == 'LST':
-        last = True
-
-      return (min_ack+1, received_buffer[:min_ack_i+1], last)
+      return (min_ack+1, received_buffer[:min_ack_i+1])
 
 
   def send_data(self, data):
@@ -310,7 +332,7 @@ class Connection:
           #self.ack_num += 1
         if self.debug:
           print('waiting for ack')
-        msg, addr = self.custom_socket.udp_socket.recvfrom(65485)
+        msg, addr = self.custom_socket.udp_socket.recvfrom(self.custom_socket.recv_window*4)
 
         last_packet_received = Packet()
         last_packet_received.from_bytes(msg)
@@ -343,6 +365,13 @@ class Connection:
     '''
 
     self.custom_socket.send_packet(self.dst_ip, self.dst_port, ack=True, seq_num=self.seq_num, ack_num=self.ack_num)
+
+  def send_fin(self):
+    '''
+    Server sends FIN to end the FIN sequence
+    '''
+
+    self.custom_socket.send_packet(self.dst_ip, self.dst_port, fin=True, seq_num=self.seq_num, ack_num=self.ack_num)
 
 class Packet:
 

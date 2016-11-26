@@ -126,8 +126,7 @@ def main():
           print('Invalid window size used for \'window\' command!\n')
       elif command.lower() == 'disconnect':
         connected = False
-        client.initiate_close()
-        break
+        connection.close()
 
       else:
         print('\nThe command you have entered is not recognized as valid, please try again.\n')
